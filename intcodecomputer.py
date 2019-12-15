@@ -10,6 +10,7 @@ class InvalidParmMode(Exception):
 
 READ, WRITE = range(2)
 ADDR, IMMD = range(2)
+JUMP, NOJUMP = range(2)
 
 class Operation:
     def __init__(self, opCode, argMetaData):
@@ -33,6 +34,23 @@ class BinaryIntOp(Operation):
         computer.write(parms[2], int(mods[2]), result)
         computer.moveCur(self.instIncr)
         return True
+
+class JumpOp(Operation):
+    def __init__(self, opCode, fn):
+        super().__init__(opCode, {0: READ, 1: READ})
+        self.fn = fn
+
+    def invoke(self, computer, mods):
+        parms = computer.processParms(mods, self)
+        result = self.fn(parms[0])
+        debug(self.__class__.__name__, "with parms", parms, "and JUMP", result==JUMP)
+
+        if result == JUMP:
+            computer.setCur(parms[1])
+        else:
+            computer.moveCur(self.instIncr)
+        return True
+        
 
 class InputOp(Operation):
     def __init__(self):
@@ -64,6 +82,14 @@ class TermOp(Operation):
         computer.setCur(0)
         return False
 
+class JumpTrueOp(JumpOp):
+    def __init__(self):
+        super().__init__(5, lambda a : JUMP if a != 0 else NOJUMP)
+
+class JumpFalseOp(JumpOp):
+    def __init__(self):
+        super().__init__(6, lambda a : JUMP if a == 0 else NOJUMP)
+
 class AddOp(BinaryIntOp):
     def __init__(self):
         super().__init__(1,lambda a, b : a + b)
@@ -71,6 +97,14 @@ class AddOp(BinaryIntOp):
 class MulOp(BinaryIntOp):
     def __init__(self):
         super().__init__(2, lambda a, b : a * b)
+
+class LessThanOp(BinaryIntOp):
+    def __init__(self):
+        super().__init__(7, lambda a, b : 1 if a < b else 0)
+
+class EqualsOp(BinaryIntOp):
+    def __init__(self):
+        super().__init__(8, lambda a, b : 1 if a == b else 0)
 
 class IntCodeComputer():
     def __init__(self, program, operations):
@@ -147,7 +181,7 @@ class IntCodeComputer():
         debug("Cur =", self.cur)
         debug("Data =", {i:x for (i,x) in enumerate(self.program)})
 
-operators = [AddOp(), MulOp(), TermOp(), InputOp(), OutputOp()]
+operators = [AddOp(), MulOp(), TermOp(), InputOp(), OutputOp(), JumpTrueOp(), JumpFalseOp(), LessThanOp(), EqualsOp()]
 operations = {x.opCode:x for x in operators}
 
 def defaultComputer(data):
