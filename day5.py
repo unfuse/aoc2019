@@ -5,6 +5,6 @@ with open("input5.txt") as csvfile:
 
 
 # 1 for 5.1, and 5 for 5.2
-intcodecomputer.defaultComputer(data).run()
+intcodecomputer.defaultInteractiveComputer(data).run()
 
 

@@ -11,6 +11,7 @@ class InvalidParmMode(Exception):
 READ, WRITE = range(2)
 ADDR, IMMD = range(2)
 JUMP, NOJUMP = range(2)
+CONTINUE, PAUSE, TERMINATE = range(3)
 
 class Operation:
     def __init__(self, opCode, argMetaData):
@@ -20,7 +21,7 @@ class Operation:
         self.instIncr =  self.numParms + 1 # + 1 to count for op position in program
     
     def invoke(self, computer, mods):
-        pass
+        return CONTINUE
 
 class BinaryIntOp(Operation):
     def __init__(self, opCode, fn):
@@ -33,7 +34,7 @@ class BinaryIntOp(Operation):
         debug(self.__class__.__name__, "with parms", parms, "and result", result, "stored to", parms[-1])
         computer.write(parms[2], int(mods[2]), result)
         computer.moveCur(self.instIncr)
-        return True
+        return super().invoke(computer, mods)
 
 class JumpOp(Operation):
     def __init__(self, opCode, fn):
@@ -49,7 +50,7 @@ class JumpOp(Operation):
             computer.setCur(parms[1])
         else:
             computer.moveCur(self.instIncr)
-        return True
+        return super().invoke(computer, mods)
         
 
 class InputOp(Operation):
@@ -59,9 +60,13 @@ class InputOp(Operation):
     def invoke(self, computer, mods):
         parms = computer.processParms(mods, self)
         debug(self.__class__.__name__, "with mode", mods, "and parms", parms)
-        computer.write(parms[0], int(mods[0]), int(input("Enter something for the Intcode Computer: ")))
+        (value, status) = computer.inputSource.getValue()
+        if (status == PAUSE):
+            return PAUSE
+
+        computer.write(parms[0], int(mods[0]), value)
         computer.moveCur(self.instIncr)
-        return True
+        return CONTINUE
 
 class OutputOp(Operation):
     def __init__(self):
@@ -70,9 +75,9 @@ class OutputOp(Operation):
     def invoke(self, computer, mods):
         parms = computer.processParms(mods, self)
         debug(self.__class__.__name__, "with mode", mods, "and parms", parms)
-        print(parms[0])
+        computer.outputSource.putValue(parms[0])
         computer.moveCur(self.instIncr)
-        return True
+        return super().invoke(computer, mods)
 
 class TermOp(Operation):
     def __init__(self):
@@ -80,7 +85,7 @@ class TermOp(Operation):
     
     def invoke(self, computer, mod):
         computer.setCur(0)
-        return False
+        return TERMINATE
 
 class JumpTrueOp(JumpOp):
     def __init__(self):
@@ -92,7 +97,7 @@ class JumpFalseOp(JumpOp):
 
 class AddOp(BinaryIntOp):
     def __init__(self):
-        super().__init__(1,lambda a, b : a + b)
+        super().__init__(1, lambda a, b : a + b)
 
 class MulOp(BinaryIntOp):
     def __init__(self):
@@ -106,10 +111,86 @@ class EqualsOp(BinaryIntOp):
     def __init__(self):
         super().__init__(8, lambda a, b : 1 if a == b else 0)
 
+class InputSource():
+    def __init__(self):
+        pass
+
+    def storeValue(self, value):
+        pass
+
+    def getValue(self):
+        pass
+
+class KeyboardInput(InputSource):
+    def __init__(self):
+        super().__init__()
+
+    def getValue(self):
+        return (int(input("Enter something for the Intcode Computer: ")), CONTINUE)
+
+class StreamInput(InputSource):
+    def __init__(self):
+        self.values = []
+        self.cur = 0
+
+    def storeValue(self, val):
+        self.values.append(int(val))
+
+    def getValue(self):
+        if (self.cur >= len(self.values)):
+            return (0, PAUSE)
+        val = self.values[self.cur]
+        self.cur += 1
+        return (val, CONTINUE)
+
+class ArrayInput(StreamInput):
+    def __init__(self, arr):
+        super().__init__()
+        self.values = arr
+        self.cur = 0
+
+    def storeValue(self, val):
+        self.arr.append(int(val))
+
+    def getValue(self):
+        return super().getValue()
+
+class OutputSource():
+    def __init__(self):
+        pass
+
+    def putValue(self):
+        pass
+
+class PrintOutput(OutputSource):
+    def __init__(self):
+        super().__init__()
+
+    def putValue(self, val):
+        print(val)
+
+class StreamOutput(OutputSource):
+    def __init__(self, dest):
+        super().__init__()
+        self.dest = dest
+
+    def putValue(self, val):
+        self.dest.storeValue(val)
+
+class ArrayOutput(OutputSource):
+    def __init__(self, arr):
+        super().__init__()
+        self.arr = arr
+
+    def putValue(self, val):
+        self.arr.append(val)
+
 class IntCodeComputer():
-    def __init__(self, program, operations):
+    def __init__(self, program, operations, inputSource, outputSource):
         self.program = program
         self.operations = operations
+        self.inputSource = inputSource
+        self.outputSource = outputSource
         self.cur = 0
 
     def run(self):
@@ -120,8 +201,8 @@ class IntCodeComputer():
                 debug("OpCode =", op.opCode, "Mods =", mods)
                 res = op.invoke(self, mods)
                 debug("")
-                if res == False:
-                    return(self.get())
+                if res != CONTINUE:
+                    return res
         except Exception as e:
             print(type(e), "Error", e)
             return None
@@ -184,5 +265,8 @@ class IntCodeComputer():
 operators = [AddOp(), MulOp(), TermOp(), InputOp(), OutputOp(), JumpTrueOp(), JumpFalseOp(), LessThanOp(), EqualsOp()]
 operations = {x.opCode:x for x in operators}
 
-def defaultComputer(data):
-    return IntCodeComputer(data, operations)
+def defaultInteractiveComputer(data):
+    return IntCodeComputer(data, operations, KeyboardInput(), PrintOutput())
+
+def defaultComputerWithSources(data, inputSource, outputSource):
+    return IntCodeComputer(data, operations, inputSource, outputSource)
