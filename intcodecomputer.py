@@ -9,7 +9,7 @@ class InvalidParmMode(Exception):
         super().__init__(*args, **kwargs)
 
 READ, WRITE = range(2)
-ADDR, IMMD = range(2)
+ADDR, IMMD, REL = range(3)
 JUMP, NOJUMP = range(2)
 CONTINUE, PAUSE, TERMINATE = range(3)
 
@@ -66,7 +66,7 @@ class InputOp(Operation):
 
         computer.write(parms[0], int(mods[0]), value)
         computer.moveCur(self.instIncr)
-        return CONTINUE
+        return super().invoke(computer, mods)
 
 class OutputOp(Operation):
     def __init__(self):
@@ -79,12 +79,22 @@ class OutputOp(Operation):
         computer.moveCur(self.instIncr)
         return super().invoke(computer, mods)
 
+class RelOffUpdateOp(Operation):
+    def __init__(self):
+        super().__init__(9, {0: READ})
+
+    def invoke(self, computer, mods):
+        parms = computer.processParms(mods, self)
+        debug(self.__class__.__name__, "with mode", mods, "and parms", parms, "and old reloff", computer.relOff)
+        computer.relOff += parms[0]
+        computer.moveCur(self.instIncr)
+        return super().invoke(computer, mods)
+
 class TermOp(Operation):
     def __init__(self):
         super().__init__(99, {})
     
     def invoke(self, computer, mod):
-        computer.setCur(0)
         return TERMINATE
 
 class JumpTrueOp(JumpOp):
@@ -188,24 +198,22 @@ class ArrayOutput(OutputSource):
 class IntCodeComputer():
     def __init__(self, program, operations, inputSource, outputSource):
         self.program = program
+        self.program.extend([0] * 4096)
         self.operations = operations
         self.inputSource = inputSource
         self.outputSource = outputSource
         self.cur = 0
+        self.relOff = 0
 
     def run(self):
-        try:
-            while True:
-                op, mods = self.processOpCode(self.program[self.cur])
-                debug("Cur =", self.cur)
-                debug("OpCode =", op.opCode, "Mods =", mods)
-                res = op.invoke(self, mods)
-                debug("")
-                if res != CONTINUE:
-                    return res
-        except Exception as e:
-            print(type(e), "Error", e)
-            return None
+        while True:
+            op, mods = self.processOpCode(self.program[self.cur])
+            debug("Cur =", self.cur)
+            debug("OpCode =", op.opCode, "Mods =", mods)
+            res = op.invoke(self, mods)
+            debug("")
+            if res != CONTINUE:
+                return res
 
     def processOpCode(self, opCode):
         opIntCode = int(str(opCode)[-2:])
@@ -236,16 +244,20 @@ class IntCodeComputer():
         return parms
 
     def write(self, idx, mode, val):
-        if int(mode) != ADDR:
+        if int(mode) == ADDR: 
+            self.program[int(idx)] = val
+        elif int(mode) == REL:
+            self.program[self.relOff + int(idx)] = val
+        else: 
             raise InvalidParmMode(mode)
-
-        self.program[idx] = val # only one write mode allowed, address mode
 
     def read(self, idx, mode):
         if int(mode) == ADDR: 
             return int(self.program[int(self.program[int(idx)])])
         if int(mode) == IMMD:
             return int(self.program[int(idx)])
+        if int(mode) == REL:
+            return int(self.program[self.relOff + int(self.program[int(idx)])])
         
         raise InvalidParmMode(mode)
 
@@ -262,7 +274,7 @@ class IntCodeComputer():
         debug("Cur =", self.cur)
         debug("Data =", {i:x for (i,x) in enumerate(self.program)})
 
-operators = [AddOp(), MulOp(), TermOp(), InputOp(), OutputOp(), JumpTrueOp(), JumpFalseOp(), LessThanOp(), EqualsOp()]
+operators = [AddOp(), MulOp(), TermOp(), InputOp(), OutputOp(), JumpTrueOp(), JumpFalseOp(), LessThanOp(), EqualsOp(), RelOffUpdateOp()]
 operations = {x.opCode:x for x in operators}
 
 def defaultInteractiveComputer(data):
