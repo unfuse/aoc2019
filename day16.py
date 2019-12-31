@@ -1,3 +1,5 @@
+from time import time
+
 with open("input16.txt") as f:
     initnumbers = [int(x) for x in list(f.read())]
 
@@ -10,6 +12,7 @@ ITERATIONS = 100
 # INPUT_EXTENDER = 1
 INPUT_EXTENDER = 10000
 
+# worked for part 1, but too slow for part 2
 def repeaterArray(arr, iter):
     array = []
     if iter <= 1:
@@ -21,41 +24,85 @@ def repeaterArray(arr, iter):
 
     return array
 
-
 # testing example
-# initnumbers = [int(x) for x in "03036732577212944063491565474664"]
+# initnumbers = [int(x) for x in "03081770884921959731165446850517"]
 
-numbers = []
+rawnumbers = []
 for i in range(INPUT_EXTENDER):
-    numbers.extend(initnumbers)
+    rawnumbers.extend(initnumbers)
 
 # part 1 offset is 0
 # offset = 0
 offset = int("".join([str(x) for x in initnumbers[:7]]))
 
-for iter in range(ITERATIONS):
-    print(iter)
-    nextNumbers = []
-    for p in range(len(numbers)):
-        if p % 100 == 0:
-            print("chugging on number", p)
-        s = 0
-        pos = p + 1
-        modifiers = repeaterArray(MODIFIERS, pos)
-        ds = []
+# optimization - if we only care about the final [offset:] numbers in the final sequence, we can care only about the [offset:] numbers in every sequence
+numbers = rawnumbers[offset:]
 
-        for i, n in enumerate(numbers):
-            m = modifiers[(modIdx + i)%len(modifiers)]
-            # ds.append("{:1}*{:2}".format(n, m))
-            s += n * m
-        
-        # print(" + ".join(ds), "=", s)
+print("oldLen:", len(rawnumbers))
+print("offset:", offset)
+print("len:   ", len(numbers))
+assert (len(rawnumbers) - offset == len(numbers)), "number array lengths and offset do not match"
 
-        ns = abs(s) % 10
-        nextNumbers.append(ns)
+# will work for any problem eg
+def smallestBrainSolution(numbers, ITERATIONS, modifiers):
+    pass # reimplement this just for giggles, use the repeaterArray impl to prebuild all modifers then zip the two arrays together (see pt. 1 commit)
 
-    numbers = nextNumbers
-    # print(numbers)
+# will work for any problem eg
+def smallBrainSolution(numbers, ITERATIONS, modifiers):
+    lenn = len(numbers)
+    st = int(time())
+    for iter in range(ITERATIONS):
+        nextNumbers = []
+        print("iter:{:2} at:{:4}s".format(iter, int(time()) - st))
+        for p in range(lenn):
+            s = 0
 
-# Part 1
-print(numbers[offset:offset+8])
+            for i, n in enumerate(numbers):
+                m = MODIFIERS[((i+modIdx+offset)//(p+1+offset)) % 4]
+                s += n * m
+
+            ns = abs(s) % 10
+            nextNumbers.append(ns)
+
+        numbers = nextNumbers
+
+    print(numbers[:8])
+
+# OFFSET must be larger than the remaining list of numbers for this to work
+def mediumBrainSolution(numbers, ITERATIONS):
+    lenn = len(numbers)
+    st = int(time())
+    for iter in range(ITERATIONS):
+        nextNumbers = []
+        print("iter:{:2} at:{:4}s".format(iter, int(time()) - st))
+        for p in range(lenn):
+            s = sum(numbers[p:])
+            ns = s % 10
+            nextNumbers.append(ns)
+
+        numbers = nextNumbers
+
+    print(numbers[:8])
+
+# OFFSET must be larger than the remaining list of numbers for this to work
+def bigBrainSolution(numbers, ITERATIONS):
+    lenn = len(numbers)
+    st = int(time())
+
+    revnum = list(reversed(numbers))
+    for iter in range(ITERATIONS):
+        nextNumbers = []
+        print("iter:{:2} at:{:4}s".format(iter, int(time()) - st))
+        rollingSum = 0
+        for p in range(lenn):
+            rollingSum += revnum[p]
+            ns = rollingSum % 10
+            nextNumbers.append(ns)
+
+        revnum = nextNumbers
+
+    output = list(reversed(revnum))
+    print(output[:8])
+
+# mediumBrainSolution(numbers, ITERATIONS)
+bigBrainSolution(numbers, ITERATIONS)
